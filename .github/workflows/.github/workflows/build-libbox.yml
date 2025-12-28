@@ -1,51 +1,56 @@
 name: Build libbox.aar (Android AAR)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
   push:
-    branches: [ dev-next ]
+    branches: [ dev-next, main ] # Triggers on push to these branches
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GO111MODULE: "on"
+    permissions:
+      contents: read
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0    # FIXED: Required for 'git describe' to find tags
+          fetch-tags: true  # FIXED: Ensures tags are available for versioning
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.22' # Sing-box 1.11+ often requires newer Go versions
+          go-version: '1.22' # Sing-box 1.11+ requires 1.21 or newer
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r25c
+          ndk-version: r25c # Recommended version for gomobile
 
       - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          gomobile init
+          # Note: gomobile init is handled during bind in newer versions, 
+          # but explicitly calling it ensures toolchain readiness.
+          $(go env GOPATH)/bin/gomobile init
 
       - name: Build libbox.aar
         run: |
-          # The -tags "with_wireguard" is CRITICAL for your WARP setup
-          # The path ./experimental/libbox is the standard location for the Android bridge
+          # Fix for 'dubious ownership' in git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          
+          # Build Command with necessary tags for WireGuard/WARP
           gomobile bind -v -androidapi 21 \
             -tags "with_wireguard with_quic with_dhcp with_dns" \
             -ldflags="-s -w" \
             ./experimental/libbox
 
-      - name: Upload artifact
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libbox-aar
-          # Gomobile generates the file in the current working directory
+          name: libbox-android-sdk
           path: |
             libbox.aar
             libbox-sources.jar

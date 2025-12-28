@@ -8,26 +8,44 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      GO111MODULE: "on"
     steps:
-      - name: Checkout repo (with tags)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
 
-      - name: Ensure git present
-        run: sudo apt-get update && sudo apt-get install -y git
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22' # Sing-box 1.11+ often requires newer Go versions
 
-      - name: Unshallow & fetch tags (defensive)
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+
+      - name: Install gomobile
         run: |
-          if [ -f .git/shallow ]; then git fetch --unshallow || true; fi
-          git fetch --tags --prune
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          gomobile init
 
-      - name: Build libbox AAR
-        run: make lib_android
+      - name: Build libbox.aar
+        run: |
+          # The -tags "with_wireguard" is CRITICAL for your WARP setup
+          # The path ./experimental/libbox is the standard location for the Android bridge
+          gomobile bind -v -androidapi 21 \
+            -tags "with_wireguard with_quic with_dhcp with_dns" \
+            -ldflags="-s -w" \
+            ./experimental/libbox
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: libbox-aar
-          path: clients/android/app/libs/*.aar
+          # Gomobile generates the file in the current working directory
+          path: |
+            libbox.aar
+            libbox-sources.jar

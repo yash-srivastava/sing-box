@@ -1,0 +1,46 @@
+name: Build libbox.aar (Android AAR)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: "on"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Install Android SDK tools (sdkmanager)
+        uses: reactivecircus/android-emulator-runner@v3
+        with:
+          api-level: 31
+          target: default
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: "-no-window"
+
+      - name: Install NDK (r25)
+        run: |
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653" >/dev/null
+
+      - name: Build libbox.aar
+        run: |
+          # If repo root is sing-box, the make target exists
+          make lib_android || go run ./cmd/internal/build_libbox -target android
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libbox-aar
+          path: clients/android/app/libs/*.aar
